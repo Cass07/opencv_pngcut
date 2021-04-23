@@ -165,7 +165,7 @@
         let B = threshold_global.ucharAt(offsety,offsetx * threshold_global.channels() + 2);
         let A = threshold_global.ucharAt(offsety,offsetx * threshold_global.channels() + 3);
 
-        if(B != 0) //B가 0이면 인덱스 0 : contour가 아님
+        if(R + G + B != 0) //RGB 합이 0이면 인덱스 0 : contour가 아님
         {
             let dst2 = threshold_global.clone();
 
