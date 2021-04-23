@@ -61,27 +61,6 @@
         mat.delete();
     };
 
-    /*
-    let canvas = document.getElementById("canvasOutput");
-    canvas.addEventListener("click", function(e){
-        let offsetx = e.offsetX;
-        let offsety = e.offsetY;
-
-        let mat = cv.imread(imgElement);
-
-        let R = mat.ucharAt(offsety,offsetx * mat.channels());
-        let G = mat.ucharAt(offsety,offsetx * mat.channels() + 1);
-        let B = mat.ucharAt(offsety,offsetx * mat.channels() + 2);
-        let A = mat.ucharAt(offsety,offsetx * mat.channels() + 3);
-
-        let width = mat.cols;
-        let height = mat.rows;
-
-        document.getElementById('canvas_xy').innerHTML = "X : " + offsetx+", Y : " + offsety + "<br>" +
-            "R : "+R + ", G : " + G + ", B : "  + B + ", A : " + A;
-
-    });
-     */
 
     let canvas = document.getElementById("canvas_debug");
     canvas.addEventListener("click", function(e){
@@ -102,6 +81,21 @@
             "R : "+R + ", G : " + G + ", B : "  + B + ", A : " + A;
 
     });
+    function index2RGB(index)
+    {
+        let R = index / 255 / 255;
+        let G = index / 255;
+        let B = index % 255;
+
+        let result = new cv.Scalar(R,G,B);
+
+        return result;
+    }
+
+    function RGB2index(R, G, B)
+    {
+        return R * 255 * 255 + G * 255 + B;
+    }
 
 
     function threshold_(input_canvas)
@@ -133,8 +127,6 @@
             }
         }
 
-        threshold_global = dst.clone();
-
         let dst2 = cv.Mat.zeros(dst.rows, dst.cols, cv.CV_8UC3);
 
         cv.cvtColor(dst,dst,cv.COLOR_RGBA2GRAY,0);
@@ -148,18 +140,13 @@
 
         for(let i = 0; i < contours.size(); i++)
         {
-            let cnt = contours.get(i);
-            let rect = cv.boundingRect(cnt);
-            let rectangleColor = new cv.Scalar(255,0,0);
-
-            let point1 = new cv.Point(rect.x, rect.y);
-            let point2 = new cv.Point(rect.x + rect.width, rect.y + rect.height);
-            cv.rectangle(dst2, point1, point2, rectangleColor, 2, cv.LINE_AA, 0);
-            cv.drawContours(dst2, contours, i, rectangleColor, 1, 8, hierarchy, 100);
+            let contourColor = index2RGB(i+1); //i=0부터 시작이라 구분을 위해 1 더해야함
+            cv.drawContours(dst2, contours, i, contourColor, cv.FILLED, 8, hierarchy, 100);
         }
 
+        threshold_global = dst2.clone();
 
-        //cv.imshow(output_canvas,dst2);
+        cv.imshow('canvas_debug',dst2);
 
         input_mat.delete();
         dst.delete();
@@ -178,81 +165,74 @@
         let B = threshold_global.ucharAt(offsety,offsetx * threshold_global.channels() + 2);
         let A = threshold_global.ucharAt(offsety,offsetx * threshold_global.channels() + 3);
 
-        if(R == 0) // 검정색이면 배경임
+        if(B != 0) //B가 0이면 인덱스 0 : contour가 아님
         {
-        }else
-        {
-            //document.getElementById('canvas_xy').innerHTML = "X : " + offsetx+", Y : " + offsety + "<br>" +
-            //    "R : "+R + ", G : " + G + ", B : "  + B + ", A : " + A;
-
             let dst2 = threshold_global.clone();
 
-            for(let i = 0; i < contours_global.size(); i++)
+            let threshold_global_R = dst2.ucharAt(offsety,offsetx * threshold_global.channels());
+            let threshold_global_G = dst2.ucharAt(offsety,offsetx * threshold_global.channels() + 1);
+            let threshold_global_B = dst2.ucharAt(offsety,offsetx * threshold_global.channels() + 2);
+
+
+            if(threshold_global_R + threshold_global_G + threshold_global_B != 0)//클릭한 점의 threshold가 0이 아니면 인덱스가 있는 contour를 클릭한것임
             {
-                let cnt = contours_global.get(i);
+                let click_point_index = RGB2index(threshold_global_R,threshold_global_G,threshold_global_B) -1;
+                let cnt = contours_global.get(click_point_index);
                 let rect = cv.boundingRect(cnt);
                 let rectangleColor = new cv.Scalar(59,160,86,255);
                 let white = new cv.Scalar(255,255,255,255);
-
                 let point1 = new cv.Point(rect.x, rect.y);
                 let point2 = new cv.Point(rect.x + rect.width, rect.y + rect.height);
 
+                //오리지널 파일 출력 캔버스에 선택 컨츄어 사각형 그림
+                let image_origin = cv.imread(imgElement).clone();
+                cv.rectangle(image_origin, point1, point2, rectangleColor, 2, cv.LINE_AA, 0);
+                cv.imshow('canvasOutput',image_origin);
+
+                //마스크용 mask mat에 선택 컨츄어만 하얀색으로 그림
                 let image_mask = new cv.Mat.zeros(dst2.rows, dst2.cols, cv.CV_8UC3);
-                let channel_mask_1 =image_mask.channels();
-                cv.drawContours(image_mask, contours_global, i, white, cv.FILLED, 8, hierarchy_global, 100);
+                cv.drawContours(image_mask, contours_global, click_point_index, white, cv.FILLED, 8, hierarchy_global, 100);
 
-                if(image_mask.ucharAt(offsety,offsetx * channel_mask_1) != 0)//검정아니면 맞는거임
+                //출력용 오리지널 파일에서 비선택 컨츄어부분 삭제하기
+                let column_roi = image_origin.cols;
+                let channel_origin = image_origin.channels();
+                let channel_mask = image_mask.channels();
+
+                let dst_roi = cv.imread(imgElement).clone();
+
+                for(let i = rect.x; i <= rect.x + rect.width; i++)
                 {
-                    let image_origin = cv.imread(imgElement).clone();
-                    cv.rectangle(image_origin, point1, point2, rectangleColor, 2, cv.LINE_AA, 0);
-
-                    cv.imshow('canvasOutput',image_origin);
-
-                    //자르기 전에 자를범위만 미리 지워놓기
-
-                    let column_roi = image_origin.cols;
-
-                    let channel_origin = image_origin.channels();
-
-                    let channel_mask = image_mask.channels();
-
-                    let dst_roi = cv.imread(imgElement).clone();
-
-                    for(let i = rect.x; i <= rect.x + rect.width; i++)
+                    for (let j = rect.y; j < rect.y + rect.height;j++)
                     {
-                        for (let j = rect.y; j < rect.y + rect.height;j++)
+                        if(image_mask.ucharAt(j,i * channel_mask) == 0)//검정이면 삭제
                         {
-                            if(image_mask.ucharAt(j,i * channel_mask) == 0)//검정이면 삭제
-                            {
-                                dst_roi.data[j * column_roi * channel_origin + i * channel_origin ] = 0;
-                                dst_roi.data[j * column_roi * channel_origin + i * channel_origin +1] = 0;
-                                dst_roi.data[j * column_roi * channel_origin + i * channel_origin +2] = 0;
-                                dst_roi.data[j * column_roi * channel_origin + i * channel_origin +3] = 0;
-                            }
+                            dst_roi.data[j * column_roi * channel_origin + i * channel_origin ] = 0;
+                            dst_roi.data[j * column_roi * channel_origin + i * channel_origin +1] = 0;
+                            dst_roi.data[j * column_roi * channel_origin + i * channel_origin +2] = 0;
+                            dst_roi.data[j * column_roi * channel_origin + i * channel_origin +3] = 0;
                         }
                     }
-
-                    dst_roi = dst_roi.roi(rect);
-
-
-                    cv.imshow('canvas_roi', dst_roi);
-                    let today = new Date();
-                    let filename = 'image_cut_'+ (today.getMonth()+1) + "_" + today.getDate() + "_" + today.getHours() + "_" + today.getMinutes() + "_" + today.getSeconds()
-                        + ".png";
-
-                    //console.log("클릭잘됐음");
-                    canvas_download('canvas_roi', filename);
-
-                    dst_roi.delete();
-                    dst2.delete();
-                    image_origin.delete();
-                    image_mask.delete();
-
-                    return;
                 }
+                //선택 컨츄어만 남긴 이후 ROI하고 출력
+                dst_roi = dst_roi.roi(rect);
+                cv.imshow('canvas_roi', dst_roi);
 
+                let today = new Date();
+                let filename = 'image_cut_'+ (today.getMonth()+1) + "_" + today.getDate() + "_" + today.getHours() + "_" + today.getMinutes() + "_" + today.getSeconds()
+                    + ".png";
+
+                //다운로드
+                canvas_download('canvas_roi', filename);
+                //안쓰는 Mat 삭제
+                dst_roi.delete();
+                dst2.delete();
+                image_origin.delete();
                 image_mask.delete();
+
+                return;
+
             }
+
         }
 
     });
