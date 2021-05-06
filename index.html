@@ -83,8 +83,8 @@
     });
     function index2RGB(index)
     {
-        let R = index / 255 / 255;
-        let G = index / 255;
+        let R = Math.floor(index / 255 / 255);
+        let G = Math.floor(index / 255);
         let B = index % 255;
 
         let result = new cv.Scalar(R,G,B);
