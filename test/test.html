@@ -18,31 +18,19 @@
     </div>
     <div class="caption">
         <canvas id = "canvasOutput"></canvas>
-        <br>
-        재단할 이미지 조각을 클릭하면 자동으로 저장됩니다.
-        <br>
         <div id = "canvas_xy"></div>
         <canvas id = "canvas_roi" ></canvas>
     </div>
 
-    <button id = "getAll" onclick = "saveAll();">50개 저장</button>
-
     <div id = "debug">
-        <canvas id = "canvas_debug" style = "display : none"></canvas>
-        <div id = "div_debug" style = "display : none"></div>
+        <canvas id = "channel_1" ></canvas>
+        <canvas id = "channel_2" ></canvas>
+        <canvas id = "channel_3" ></canvas>
+        <canvas id = "channel_4" ></canvas>
     </div>
-
-    <input type = "hidden" id = "contourLength" value = 0 >
-    <label for ="fileName">파일이름</label>
-    <input type = "text" id = "fileName" value = "파일" >
-    <br>
-    <label for ="filePage">페이지</label>
-    <input type = "number" id = "filePage" value = 1 >
-
 
 </div>
 <a id = "target" style = "display:none"></a>
-<script src="lib/jszip.js"></script>
 <script type = "text/javascript">
     let loading = document.getElementById('loading');
     let container = document.getElementById('container');
@@ -68,6 +56,26 @@
         let mat = cv.imread(imgElement);
         cv.imshow('canvasOutput',mat);
 
+        let dst = mat.clone();
+
+        let column = dst.cols;
+        let row = dst.rows;
+        let channel = dst.channels();
+
+        for(let i = 0; i < column; i++)
+        {
+            for (let j = 0; j < row;j++)
+            {
+                let show = dst.data[j * column * channel + i * channel + 3];
+                dst.data[j * column * channel + i * channel ] = show;
+                dst.data[j * column * channel + i * channel +1] = show;
+                dst.data[j * column * channel + i * channel +2] = show;
+                dst.data[j * column * channel + i * channel +3] = 255;
+            }
+        }
+
+        cv.imshow("channel_1", dst);
+
         threshold_ (document.getElementById("canvasOutput"));
         mat.delete();
     };
@@ -80,6 +88,10 @@
 
         let mat = cv.imread(canvas);
 
+        let img_channels;
+
+        cv.split(mat, img_channels);
+
         let R = mat.ucharAt(offsety,offsetx * mat.channels());
         let G = mat.ucharAt(offsety,offsetx * mat.channels() + 1);
         let B = mat.ucharAt(offsety,offsetx * mat.channels() + 2);
@@ -88,8 +100,6 @@
         let width = mat.cols;
         let height = mat.rows;
 
-        document.getElementById('div_debug').innerHTML = "X : " + offsetx+", Y : " + offsety + "<br>" +
-            "R : "+R + ", G : " + G + ", B : "  + B + ", A : " + A;
 
     });
     function index2RGB(index)
@@ -154,8 +164,6 @@
             let contourColor = index2RGB(i+1); //i=0부터 시작이라 구분을 위해 1 더해야함
             cv.drawContours(dst2, contours, i, contourColor, cv.FILLED, 8, hierarchy, 100);
         }
-
-        document.getElementById("contourLength").value = contours.size();
 
         threshold_global = dst2.clone();
 
@@ -265,79 +273,8 @@
         }
     }
 
-    //50개씩만 받기로함 메모리문제인거같은데 이유몰루
-    function saveAll(){
-        let filename =  document.getElementById("fileName").value;
-        let zip = new JSZip();
-        let contourSize = document.getElementById("contourLength").value;
-        console.log(contourSize);
-
-        let i = document.getElementById("filePage").value -1;
-
-        let point_index = contourSize - i * 50 -1;
-        let end_index = contourSize - (i+1)*50 < -1 ? -1 : contourSize - (i+1)*50 ;
-        console.log("first " + point_index + " end " + end_index);
-            do{
-            let dst2 = threshold_global.clone();
-            let click_point_index = point_index;
-            let cnt = contours_global.get(click_point_index);
-            let rect = cv.boundingRect(cnt);
-            let rectangleColor = new cv.Scalar(59,160,86,255);
-            let white = new cv.Scalar(255,255,255,255);
-            let point1 = new cv.Point(rect.x, rect.y);
-            let point2 = new cv.Point(rect.x + rect.width, rect.y + rect.height);
-
-            //오리지널 파일 출력 캔버스에 선택 컨츄어 사각형 그림
-            let image_origin = cv.imread(imgElement).clone();
-            cv.rectangle(image_origin, point1, point2, rectangleColor, 2, cv.LINE_AA, 0);
-            cv.imshow('canvasOutput',image_origin);
-
-            //마스크용 mask mat에 선택 컨츄어만 하얀색으로 그림
-            let image_mask = new cv.Mat.zeros(dst2.rows, dst2.cols, cv.CV_8UC3);
-            cv.drawContours(image_mask, contours_global, click_point_index, white, cv.FILLED, 8, hierarchy_global, 100);
-
-            //출력용 오리지널 파일에서 비선택 컨츄어부분 삭제하기
-            let column_roi = image_origin.cols;
-            let channel_origin = image_origin.channels();
-            let channel_mask = image_mask.channels();
-
-            let dst_roi = cv.imread(imgElement).clone();
-
-            for(let i = rect.x; i <= rect.x + rect.width; i++)
-            {
-                for (let j = rect.y; j < rect.y + rect.height;j++)
-                {
-                    if(image_mask.ucharAt(j,i * channel_mask) == 0)//검정이면 삭제
-                    {
-                        dst_roi.data[j * column_roi * channel_origin + i * channel_origin ] = 0;
-                        dst_roi.data[j * column_roi * channel_origin + i * channel_origin +1] = 0;
-                        dst_roi.data[j * column_roi * channel_origin + i * channel_origin +2] = 0;
-                        dst_roi.data[j * column_roi * channel_origin + i * channel_origin +3] = 0;
-                    }
-                }
-            }
-            //선택 컨츄어만 남긴 이후 ROI하고 출력
-            dst_roi = dst_roi.roi(rect);
-            cv.imshow('canvas_roi', dst_roi);
-
-            console.log(filename+point_index+".png");
-            let imageUrlData = document.getElementById('canvas_roi').toDataURL();
-            zip.file(filename+point_index+".png", imageUrlData.split("base64,")[1], {base64:true});
-
-            dst_roi.delete();
-            dst2.delete();
-            image_origin.delete();
-            image_mask.delete();
-
-            point_index--;
-        }while(point_index > end_index);
-
-        zip.generateAsync({type:"base64"}).then(function (base64) {
-            location.href="data:application/zip;base64," + base64;
-        });
-
-
-
+    function canvasZipTest(canvasid, filename)
+    {
     }
 
 </script>
